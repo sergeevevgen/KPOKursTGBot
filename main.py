@@ -30,7 +30,7 @@ routes_data = {
 }
 
 
-# Обработчик команды /start
+# Обработчик команды /start. Также сбрасывает состояние пользователя
 @dp.message_handler(commands=['start'])
 async def start(message: types.Message, state: FSMContext):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -42,7 +42,8 @@ async def start(message: types.Message, state: FSMContext):
     await state.finish()
 
 
-# Обработчик для кнопки "Просмотр списка маршрутов"
+# Обработчик для кнопки "Просмотр списка маршрутов". Выполняется, когда пользователь также написал
+# "Просмотр списка маршрутов"
 @dp.message_handler(lambda message: message.text == "Просмотр списка маршрутов")
 async def show_routes_list(message: types.Message, state: FSMContext):
     await state.update_data(current_step="show_routes_list")
@@ -51,153 +52,126 @@ async def show_routes_list(message: types.Message, state: FSMContext):
     for route_number, route_data in routes_data.items():
         routes_list_text += f"{route_number}. {route_data['name']}\n"
 
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-    await message.answer(routes_list_text, reply_markup=keyboard)
+    await message.answer(routes_list_text, reply_markup=create_back_button())
 
 
-# Обработчик для кнопки "Выбрать маршрут"
+# Обработчик для кнопки "Выбрать маршрут". Выполняется, когда пользователь также написал
+# "Выбрать маршрут"
 @dp.message_handler(lambda message: message.text == "Выбрать маршрут")
 async def choose_route(message: types.Message, state: FSMContext):
     await state.update_data(current_step="choose_route")
 
-    await message.answer("Введите номер маршрута (например, 22):")
+    # Создаем кнопку "Назад"
+    keyboard = create_back_button()
+
+    await message.answer("Введите номер маршрута (например, 22):", reply_markup=keyboard)
 
 
-# Обработчик для кнопки "Назад" на шаге выбора маршрута
+# Обработчик для ввода номера маршрута при вызове функции choose_route
+@dp.message_handler(lambda message: message.text.isdigit())
+async def handle_route_number(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    current_step = data.get("current_step")
+
+    if current_step != 'choose_route':
+        await message.answer("Неверная команда", reply_markup=create_back_button())
+        return
+
+    # Получаем номер маршрута из сообщения
+    route_number = message.text
+
+    # Вызываем вторую функцию для отображения маршрута
+    await show_route(message, state, route_number)
+
+
+# Обработчик команды /show_route + номер маршрута. Срабатывает только на эту команду
+@dp.message_handler(commands=['show_route'])
+async def show_route(message: types.Message, state: FSMContext, route_number=None):
+    await state.update_data(current_step="show_route")
+
+    # Создаем кнопку "Назад"
+    keyboard = create_back_button()
+
+    # Проверяем, что пользователь указал номер маршрута
+    if route_number is None and not message.get_args():
+        route_number = message.get_args()
+
+    if route_number in routes_data:
+        try:
+            # Тут надо вытаскивать массив координат и по ним строить путь
+            route_coordinates = routes_data[route_number]['coordinates'][0]
+            # Выполняем запрос к Yandex Maps API для получения данных о маршруте
+            response = requests.get(
+                f'https://static-maps.yandex.ru/v1?apikey={api_key}&ll={route_coordinates[0]},{route_coordinates[1]}'
+                f'&spn=1,1')
+            data = response.content
+
+            await message.answer_photo(data, reply_markup=keyboard)
+
+        except Exception as e:
+            logging.error(f"Error fetching or processing route: {e}")
+            await message.answer('Произошла ошибка при построении маршрута', reply_markup=keyboard)
+    else:
+        await message.answer("Маршрут не найден. Введите корректный номер маршрута", reply_markup=keyboard)
+
+
+# Обработчик для кнопки "Отправить местоположение". Пользователь отправляет своё местоположение
+@dp.message_handler(lambda message: message.text == "Отправить местоположение")
+async def request_location(message: types.Message, state: FSMContext):
+    await state.update_data(current_step="request_location")
+
+    keyboard = create_back_button()
+    button = types.KeyboardButton("Отправить местоположение", request_location=True)
+    keyboard.add(button)
+
+    await message.answer("Отправьте ваше текущее местоположение:", reply_markup=keyboard)
+
+
+# Обработчик для кнопки "Отправить местоположение". Пользователь отправляет своё местоположение.
+# В данной функции мы получаем местоположение пользователя. Надо из него вытаскивать его координаты
+# и на их основе предлагать ему проезжающий транспорт
+@dp.message_handler(content_types=types.ContentType.LOCATION)
+async def process_location(message: types.Message, state: FSMContext):
+    await state.update_data(current_step="process_location")
+
+    # Здесь вы можете обработать полученные координаты и отправить список маршрутов рядом
+    await message.answer("Список маршрутов в вашем районе:", reply_markup=create_back_button())
+
+
+# Выводит кнопку "Указать место назначения". В текстовом формате спрашивает у пользователя место назначения.
+# Мы должны строить путь между его местоположением - поэтому надо хранить его последнее местоположение, если его нет, то
+# выводить ошибку.
+@dp.message_handler(lambda message: message.text == "Указать место назначения")
+async def request_destination(message: types.Message, state: FSMContext):
+    await state.update_data(current_step="request_destination")
+
+    await message.answer("Введите место назначения (например, улица Языкова):", reply_markup=create_back_button())
+
+
+# Обработчик для кнопки "Назад" на шаге выбора маршрута. Пока что возвращает на команду /start
 @dp.message_handler(lambda message: message.text == "Назад", state='*')
 async def back_to_start(message: types.Message, state: FSMContext):
     data = await state.get_data()
     current_step = data.get("current_step")
 
+    # В зависимости от текущего шага, выполните соответствующее действие
+    if current_step == "process_destination":
+        return await start(message, state)
+
     # Пока пусть возвращаются на начальное меню
     return await start(message, state)
-    # В зависимости от текущего шага, выполните соответствующее действие
-    if current_step == "show_routes_list":
-        return await start(message, state)
-    elif current_step == "choose_route":
-        return await start(message, state)
 
 
-# Обработчик команды /show_route
-@dp.message_handler(commands=['show_route'])
-async def show_route(message: types.Message, state: FSMContext):
-    await state.update_data(current_step="show_route")
-
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-
-    # Проверяем, что пользователь указал номер маршрута
-    if not message.get_args():
-        await message.answer('Пожалуйста, укажите номер маршрута.')
-        return
-
-    route_number = message.get_args()
-
-    try:
-        route_coordinates = routes_data[route_number]['coordinates'][0]
-        # Выполняем запрос к Yandex Maps API для получения данных о маршруте
-        response = requests.get(
-            f'https://static-maps.yandex.ru/v1?apikey={api_key}&ll={route_coordinates[0]},{route_coordinates[1]}'
-            f'&spn=1,1')
-        data = response.content
-
-        # Получаем координаты маршрута (предполагаем, что они в формате [широта, долгота])
-        #route_coordinates = data['features'][0]['geometry']['coordinates']
-
-        # Создаем изображение карты с маршрутом
-        #map_image = create_route_image(route_coordinates)
-
-        # Преобразование байтов в изображение
-        image = Image.open(BytesIO(data))
-        # Отправляем изображение пользователю
-        with BytesIO() as bio:
-            image.save(bio, format='PNG')
-            bio.seek(0)
-            await message.answer_photo(bio, reply_markup=keyboard)
-
-    except Exception as e:
-        logging.error(f"Error fetching or processing route: {e}")
-        await message.answer('Произошла ошибка при построении маршрута.', reply_markup=keyboard)
-
-
-@dp.message_handler(regexp=r'^\d+$')
-async def process_route_choice(message: types.Message, state: FSMContext):
-    await state.update_data(current_step="process_route_choice")
-    route_number = message.text
-
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-
-    if route_number in routes_data:
-        route_coordinates = routes_data[route_number]['coordinates']
-        map_image = Image.open('bot.jpg')
-        # map_image = create_route_image(route_coordinates)
-        await send_image(message.chat.id, map_image, keyboard)
-    else:
-        await message.answer("Маршрут не найден. Введите корректный номер маршрута.", reply_markup=keyboard)
-
-
-# Функция для отправки изображения
-async def send_image(chat_id, image, keyboard):
-    with BytesIO() as bio:
-        image.save(bio, format='PNG')
-        bio.seek(0)
-        await bot.send_photo(chat_id, bio, reply_markup=keyboard)
-
-
-# Обработчик для кнопки "Отправить местоположение"
-@dp.message_handler(lambda message: message.text == "Отправить местоположение")
-async def request_location(message: types.Message, state: FSMContext):
-    await state.update_data(current_step="request_location")
-
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    button = types.KeyboardButton("Отправить местоположение", request_location=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(button)
-    keyboard.add(back_button)
-
-    await message.answer("Отправьте ваше текущее местоположение:", reply_markup=keyboard)
-
-
-@dp.message_handler(content_types=types.ContentType.LOCATION)
-async def process_location(message: types.Message, state: FSMContext):
-    await state.update_data(current_step="process_location")
-
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-
-    # Здесь вы можете обработать полученные координаты и отправить список маршрутов рядом
-    await message.answer("Список маршрутов в вашем районе:", reply_markup=keyboard)
-
-
-# Обработчик для кнопки "Указать место назначения"
-@dp.message_handler(lambda message: message.text == "Указать место назначения")
-async def request_destination(message: types.Message, state: FSMContext):
-    await state.update_data(current_step="request_destination")
-
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-
-    await message.answer("Введите место назначения (например, улица Языкова):", reply_markup=keyboard)
-
-
+# Обработчик для кнопки "Указать место назначения". В текстовом формате спрашивает у пользователя место назначения.
+# Мы должны строить путь между его местоположением и отдавать ему план поездки
+# - поэтому надо хранить его последнее местоположение, если его нет, то выводить ошибку
 @dp.message_handler(lambda message: True)
 async def process_destination(message: types.Message, state: FSMContext):
     await state.update_data(current_step="process_destination")
 
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    back_button = types.KeyboardButton("Назад")
-    keyboard.add(back_button)
-
     destination = message.text
     # Здесь вы можете обработать место назначения и отправить список транспорта
-    await message.answer("Список транспорта и места пересадок:", reply_markup=keyboard)
+    await message.answer("Список транспорта и места пересадок:", reply_markup=create_back_button())
 
 
 # Функция для создания изображения карты с маршрутом
@@ -211,6 +185,22 @@ def create_route_image(route_coordinates):
     draw.line(route_coordinates, fill='blue', width=3)
 
     return image
+
+
+# Функция для отправки изображения. Принимает номер чата, картинку (в виде набора байтов), а также клавиватуру
+async def send_image(chat_id, image, keyboard):
+    with BytesIO() as bio:
+        image.save(bio, format='PNG')
+        bio.seek(0)
+        await bot.send_photo(chat_id, bio, reply_markup=keyboard)
+
+
+# Добавление кнопки "Назад"
+def create_back_button():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    back_button = types.KeyboardButton("Назад")
+    keyboard.add(back_button)
+    return keyboard
 
 
 # Запуск бота
