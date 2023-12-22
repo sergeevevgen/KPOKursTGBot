@@ -12,11 +12,11 @@ from aiogram.dispatcher import FSMContext
 # Устанавливаем уровень логгирования
 logging.basicConfig(level=logging.INFO)
 
-# Замените 'YOUR_BOT_TOKEN' на реальный токен вашего бота
+# API-ключ для Telegram Bot API
 API_TOKEN = '6436810765:AAGNGi5z6WSMa9Jxl5jq0ihQAZSzrCz0NZ8'
 
-# Замените 'YOUR_YANDEX_API_KEY' на ваш реальный ключ
-api_key = 'YOUR_YANDEX_API_KEY'
+# API-ключ для Static API Yandex
+api_key = '3936e5b7-220c-49f2-9715-f926cd686b84'
 
 # Инициализация бота и диспетчера
 bot = Bot(token=API_TOKEN)
@@ -25,7 +25,7 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 # Словарь для хранения данных о маршрутах
 # Здесь нужно будет добавить реальные данные о маршрутах
 routes_data = {
-    '22': {'name': 'Маршрут 22', 'coordinates': [[55.752, 37.616], [55.754, 37.620], [55.756, 37.622]]},
+    '22': {'name': 'Маршрут 22', 'coordinates': [[18.560364, 40.354126], [55.754, 37.620], [55.756, 37.622]]},
     # Добавьте другие маршруты по аналогии
 }
 
@@ -97,21 +97,24 @@ async def show_route(message: types.Message, state: FSMContext):
     route_number = message.get_args()
 
     try:
+        route_coordinates = routes_data[route_number]['coordinates'][0]
         # Выполняем запрос к Yandex Maps API для получения данных о маршруте
         response = requests.get(
-            f'https://api-maps.yandex.ru/services/route/2.0/?apikey={api_key}&from=место_отправления'
-            f'&to={route_number}&format=json')
-        data = response.json()
+            f'https://static-maps.yandex.ru/v1?apikey={api_key}&ll={route_coordinates[0]},{route_coordinates[1]}'
+            f'&spn=1,1')
+        data = response.content
 
         # Получаем координаты маршрута (предполагаем, что они в формате [широта, долгота])
-        route_coordinates = data['features'][0]['geometry']['coordinates']
+        #route_coordinates = data['features'][0]['geometry']['coordinates']
 
         # Создаем изображение карты с маршрутом
-        map_image = create_route_image(route_coordinates)
+        #map_image = create_route_image(route_coordinates)
 
+        # Преобразование байтов в изображение
+        image = Image.open(BytesIO(data))
         # Отправляем изображение пользователю
         with BytesIO() as bio:
-            map_image.save(bio, format='PNG')
+            image.save(bio, format='PNG')
             bio.seek(0)
             await message.answer_photo(bio, reply_markup=keyboard)
 
