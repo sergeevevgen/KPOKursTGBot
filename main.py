@@ -25,20 +25,14 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 # Словарь для хранения данных о маршрутах
 # Здесь нужно будет добавить реальные данные о маршрутах
 routes_data = {
-    '22': {'name': 'Маршрут 22', 'coordinates': [[18.560364, 40.354126], [55.754, 37.620], [55.756, 37.622]]},
-    # Добавьте другие маршруты по аналогии
+    '22': {'name': 'Маршрут №22', 'file': '22marsh.txt'},
+    '42': {'name': 'Маршрут №42', 'file': '42marsh.txt'},
+    '78': {'name': 'Маршрут №78', 'file': '78marsh.txt'},
+    # Другие маршруты
 }
 
 # координаты в яндекс.картах менять местами необходимо
-url_for_test = 'https://static-maps.yandex.ru/v1?lang=ru_RU&pl=48.55439632694345,54.35608323640922,' \
-               '48.55622050135121,54.35750023872133,' \
-               '48.55889198153004,54.35846523427855,48.56087681620108,54.358578024480806,' \
-               '48.56346155352407,54.35758170026521,' \
-               '48.564727556179115,54.35753783637713,48.56598051991628,54.35787676005814,' \
-               '48.574066877540865,54.36146463563228,' \
-               '48.57705910451171,54.36269462763428,48.58258125031516,54.365154317694476,' \
-               '48.590735795658105,54.36872067244739,48.610957727662566,54.37769882245048' \
-               '&apikey=3936e5b7-220c-49f2-9715-f926cd686b84'
+base_url = 'https://static-maps.yandex.ru/v1?lang=ru_RU&pl='
 
 
 # Обработчик команды /start. Также сбрасывает состояние пользователя
@@ -110,11 +104,22 @@ async def show_route(message: types.Message, state: FSMContext, route_number=Non
     if route_number in routes_data:
         try:
             # Тут надо вытаскивать массив координат и по ним строить путь
-            route_coordinates = routes_data[route_number]['coordinates'][0]
+            file_c = routes_data[route_number]['file']
+
+            with open(file_c, 'r') as file:
+                # Читаем содержимое файла и записываем его в переменную
+                file_content = file.read()
+
+            # Разделяем строки по символу новой строки и удаляем пробелы
+            lines_without_whitespace = [line.strip() for line in file_content.split('\n')]
+
+            # Объединяем строки обратно в одну строку
+            coordinates = ''.join(lines_without_whitespace)
+
+            url_for_marsh = base_url + coordinates + f'&apikey={api_key}'
             # Выполняем запрос к Yandex Maps API для получения данных о маршруте
-            response = requests.get(
-                f'https://static-maps.yandex.ru/v1?apikey={api_key}&ll={route_coordinates[0]},{route_coordinates[1]}'
-                f'&spn=1,1')
+            response = requests.get(url_for_marsh)
+
             data = response.content
 
             await message.answer_photo(data, reply_markup=keyboard)
