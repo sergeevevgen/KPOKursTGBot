@@ -217,6 +217,7 @@ async def process_destination(message: types.Message, state: FSMContext):
 
 
 
+
     destination = message.text.split(':')
     path_to = f'Чтобы добраться от места {destination[0]} до места {destination[1]}, вам необходимо:\n' \
               'Дойти до остановки Деева, направленной в сторону Верхней Террасы (500м).' \
