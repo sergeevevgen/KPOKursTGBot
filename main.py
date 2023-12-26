@@ -215,6 +215,8 @@ async def back_to_start(message: types.Message, state: FSMContext):
 async def process_destination(message: types.Message, state: FSMContext):
     await state.update_data(current_step="process_destination")
 
+
+
     destination = message.text.split(':')
     path_to = f'Чтобы добраться от места {destination[0]} до места {destination[1]}, вам необходимо:\n' \
               'Дойти до остановки Деева, направленной в сторону Верхней Террасы (500м).' \
