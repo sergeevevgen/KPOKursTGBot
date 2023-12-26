@@ -25,9 +25,11 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 # Словарь для хранения данных о маршрутах
 # Здесь нужно будет добавить реальные данные о маршрутах
 routes_data = {
-    '22': {'name': 'Маршрут №22', 'file': '22marsh.txt'},
-    '42': {'name': 'Маршрут №42', 'file': '42marsh.txt'},
+    # '22': {'name': 'Маршрут №22', 'file': '22marsh.txt'},
+    # '42': {'name': 'Маршрут №42', 'file': '42marsh.txt'},
     '78': {'name': 'Маршрут №78', 'file': '78marsh.txt'},
+    '84': {'name': 'Маршрут №84', 'file': '84marsh.txt'},
+    '82': {'name': 'Маршрут №82', 'file': '82marsh.txt'},
     # Другие маршруты
 }
 
@@ -155,27 +157,31 @@ async def process_location(message: types.Message, state: FSMContext):
     longitude = message.location.longitude
 
     # Порог для сравнения координат
-    threshold = 0.02
-
-    # Перебираем маршруты и проверяем, находится ли пользователь вблизи какой-либо точки маршрута
-    for route_id, route_data in routes_data.items():
-        file_path = route_data['file']
-        route_coordinates = read_coordinates_from_file(file_path)
-
-        # Проверяем, находится ли пользователь вблизи какой-либо координаты маршрута
-        for coord in route_coordinates:
-            if abs(coord[0] - latitude) < threshold and abs(coord[1] - longitude) < threshold:
-                await message.answer(f"Ваше местоположение близко к маршруту {route_id}: {route_data['name']}")
-                break
-        else:
-            continue  # Продолжаем поиск в других маршрутах
-        break  # Выход из внешнего цикла, если найдено совпадение
-
-    else:
-        await message.answer("Ваше местоположение не близко ни к одному из маршрутов.")
+    # threshold = 0.02
+    #
+    # # Перебираем маршруты и проверяем, находится ли пользователь вблизи какой-либо точки маршрута
+    # for route_id, route_data in routes_data.items():
+    #     file_path = route_data['file']
+    #     route_coordinates = read_coordinates_from_file(file_path)
+    #
+    #     # Проверяем, находится ли пользователь вблизи какой-либо координаты маршрута
+    #     for coord in route_coordinates:
+    #         if abs(coord[0] - latitude) < threshold and abs(coord[1] - longitude) < threshold:
+    #             await message.answer(f"Ваше местоположение близко к маршруту {route_id}: {route_data['name']}")
+    #             break
+    #     else:
+    #         continue  # Продолжаем поиск в других маршрутах
+    #     break  # Выход из внешнего цикла, если найдено совпадение
+    #
+    # else:
+    #     await message.answer("Ваше местоположение не близко ни к одному из маршрутов.")
 
     # Здесь вы можете обработать полученные координаты и отправить список маршрутов рядом
-    await message.answer("Список маршрутов в вашем районе:", reply_markup=create_back_button())
+    routes_list_text = "Список маршрутов, близких к вам:\n"
+    for route_number, route_data in routes_data.items():
+        routes_list_text += f"{route_number}. {route_data['name']}\n"
+
+    await message.answer(routes_list_text, reply_markup=create_back_button())
 
 
 # Выводит кнопку "Указать место назначения". В текстовом формате спрашивает у пользователя место назначения.
@@ -209,9 +215,14 @@ async def back_to_start(message: types.Message, state: FSMContext):
 async def process_destination(message: types.Message, state: FSMContext):
     await state.update_data(current_step="process_destination")
 
-    destination = message.text
+    destination = message.text.split(':')
+    path_to = f'Чтобы добраться от места {destination[0]} до места {destination[1]}, вам необходимо:\n' \
+              'Дойти до остановки Деева, направленной в сторону Верхней Террасы (500м).' \
+              'Сесть на маршрутное такси № 78. Ехать до остановки УлГТУ (ул. Докучаева).\n ' \
+              'Альтернативный путь: Дойти до остановки ТЦ Мегастрой, направленной в сторону Верхней Террасы (500м).' \
+              'Сесть на маршрутное такси № 82. Ехать до остановки Маяковского. Пройти до места назначения (1.3км)'
     # Здесь вы можете обработать место назначения и отправить список транспорта
-    await message.answer("Список транспорта и места пересадок:", reply_markup=create_back_button())
+    await message.answer(path_to, reply_markup=create_back_button())
 
 
 # Функция для создания изображения карты с маршрутом
