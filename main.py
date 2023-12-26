@@ -150,6 +150,30 @@ async def request_location(message: types.Message, state: FSMContext):
 async def process_location(message: types.Message, state: FSMContext):
     await state.update_data(current_step="process_location")
 
+    # Получаем широту и долготу из объекта message.location
+    latitude = message.location.latitude
+    longitude = message.location.longitude
+
+    # Порог для сравнения координат
+    threshold = 0.02
+
+    # Перебираем маршруты и проверяем, находится ли пользователь вблизи какой-либо точки маршрута
+    for route_id, route_data in routes_data.items():
+        file_path = route_data['file']
+        route_coordinates = read_coordinates_from_file(file_path)
+
+        # Проверяем, находится ли пользователь вблизи какой-либо координаты маршрута
+        for coord in route_coordinates:
+            if abs(coord[0] - latitude) < threshold and abs(coord[1] - longitude) < threshold:
+                await message.answer(f"Ваше местоположение близко к маршруту {route_id}: {route_data['name']}")
+                break
+        else:
+            continue  # Продолжаем поиск в других маршрутах
+        break  # Выход из внешнего цикла, если найдено совпадение
+
+    else:
+        await message.answer("Ваше местоположение не близко ни к одному из маршрутов.")
+
     # Здесь вы можете обработать полученные координаты и отправить список маршрутов рядом
     await message.answer("Список маршрутов в вашем районе:", reply_markup=create_back_button())
 
@@ -217,6 +241,16 @@ def create_back_button():
     back_button = types.KeyboardButton("Назад")
     keyboard.add(back_button)
     return keyboard
+
+
+def read_coordinates_from_file(file_path):
+    with open(file_path, 'r') as file:
+        coordinates = [tuple(map(float, line.strip().split(','))) for line in file]
+    return coordinates
+
+
+def coordinates_in_range(coord, range_min, range_max):
+    return range_min[0] <= coord[0] <= range_max[0] and range_min[1] <= coord[1] <= range_max[1]
 
 
 # Запуск бота
